@@ -1,70 +1,89 @@
 # ghcr.io/coolcow/duplicity
 
-Simple, secure, and bandwidth-efficient backups using [Duplicity](http://duplicity.nongnu.org/) in a minimal Alpine-based Docker image.
+A flexible, multi-purpose, and minimal Alpine-based Docker image for [Duplicity](http://duplicity.nongnu.org/).
+
+This image supports two modes: direct `duplicity` command execution (default) and a cron-based scheduler for running backups automatically. It runs as a non-root user and is configurable through runtime environment variables.
 
 ---
 
-## Overview
+## Recommended Usage with `docker-compose`
 
-This image provides [Duplicity](http://duplicity.nongnu.org/), a tool for encrypted, bandwidth-efficient backups using the rsync algorithm. Duplicity creates encrypted, incremental, and compressed backups, supporting a wide range of local and remote storage backends.
+This example demonstrates both modes side-by-side.
 
----
+**`docker-compose.yml`**
+```yaml
+version: "3.7"
+services:
+  # Example 1: Running a one-off duplicity command
+  duplicity-command:
+    image: ghcr.io/coolcow/duplicity:latest
+    command: /source file:///backup
+    environment:
+      - PUID=1000
+      - PGID=1000
+    volumes:
+      - /path/to/source:/source
+      - /path/to/backup:/backup
 
-## Features
-
-- Based on Alpine Linux for a small footprint
-- Runs as non-root by default (user: `duplicity`)
-- Secure execution via [docker-entrypoints](https://github.com/coolcow/docker-entrypoints)
-- Easily configurable user/group IDs to avoid permission issues
-- Supports all Duplicity features and backends
-
----
-
-## Usage
-
-### Quick Start
-
-```sh
-docker run --rm \
-  -e PUID=$(id -u) \
-  -e PGID=$(id -g) \
-  -v /path/to/data:/data \
-  ghcr.io/coolcow/duplicity [duplicity options]
+  # Example 2: Running as a cron scheduler
+  duplicity-cron:
+    image: ghcr.io/coolcow/duplicity:latest
+    restart: unless-stopped
+    environment:
+      - RUN_MODE=cron
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Berlin
+    volumes:
+      - ./crontab:/crontab:ro
+      - /path/to/source:/source
+      - /path/to/backup:/backup
+      - /path/to/logs:/logs
 ```
 
-By default, the container runs:
-
-- **ENTRYPOINT:** `/entrypoint_su-exec.sh duplicity`
-- **CMD:** `--help`
-
-So running the image with no arguments will show the Duplicity help.
-
-### Example: Backup to Local Directory
-
-```sh
-docker run --rm \
-  -e PUID=$(id -u) -e PGID=$(id -g) \
-  -v /path/to/source:/source \
-  -v /path/to/backup:/backup \
-  ghcr.io/coolcow/duplicity \
-  /source file:///backup
+**Example `crontab` file:**
+```crontab
+# Run a backup every day at 2:00 AM
+0 2 * * *    flock -n /tmp/duplicity.lock duplicity /source file:///backup >> /logs/duplicity.log 2>&1
 ```
 
 ---
 
 ## Configuration
 
-### Environment Variables
+### Runtime Environment Variables
 
-| Variable   | Default | Description                                  |
-|------------|---------|----------------------------------------------|
-| `PUID`     | 1000    | User ID to run duplicity as                  |
-| `PGID`     | 1000    | Group ID to run duplicity as                 |
-| `ENTRYPOINT_USER`  | duplicity | Internal: user for entrypoint script |
-| `ENTRYPOINT_GROUP` | duplicity | Internal: group for entrypoint script|
-| `ENTRYPOINT_HOME`  | /home     | Internal: home directory              |
+| Variable        | Default   | Description                                                    |
+| --------------- | --------- | -------------------------------------------------------------- |
+| `RUN_MODE`      | `duplicity` | Set to `cron` to activate the cron scheduler mode.          |
+| `PUID`          | `1000`    | The user ID to run the `duplicity` process as.                |
+| `PGID`          | `1000`    | The group ID to run the `duplicity` process as.               |
+| `TZ`            | `Etc/UTC` | Timezone for the container, important for correct scheduling. |
+| `CROND_CRONTAB` | `/crontab`| Path inside the container for the crontab file.               |
 
-> Set `PUID` and `PGID` to match your host user to avoid permission issues with mounted volumes.
+### Build-Time Arguments
+
+Customize the image at build time with `docker build --build-arg <KEY>=<VALUE>`.
+
+| Argument              | Default   | Description                                      |
+| --------------------- | --------- | ------------------------------------------------ |
+| `ALPINE_VERSION`      | `3.23.3`  | Version of the Alpine base image.                |
+| `ENTRYPOINTS_VERSION` | `2.0.0`   | Version of the `coolcow/entrypoints` image.      |
+
+---
+
+## Local Testing
+
+Run the built-in smoke tests locally.
+
+1. `docker build -t ghcr.io/coolcow/duplicity:local-test-build -f build/Dockerfile build`
+2. `docker build --build-arg APP_IMAGE=ghcr.io/coolcow/duplicity:local-test-build -f build/Dockerfile.test build`
+
+---
+
+## Deprecation Notice
+
+This image replaces the now-obsolete `ghcr.io/coolcow/duplicity-cron` image. Migrate by using the `RUN_MODE=cron` environment variable.
 
 ---
 
@@ -72,14 +91,6 @@ docker run --rm \
 
 - [Duplicity Documentation](http://duplicity.nongnu.org/)
 - [docker-entrypoints](https://github.com/coolcow/docker-entrypoints)
-
----
-
-## Example: Show Duplicity Help
-
-```sh
-docker run --rm ghcr.io/coolcow/duplicity
-```
 
 ---
 

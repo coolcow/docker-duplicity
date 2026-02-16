@@ -1,19 +1,45 @@
-FROM ghcr.io/coolcow/entrypoints:latest
+# Global build arguments
+ARG ENTRYPOINTS_VERSION=2.0.0
+ARG ALPINE_VERSION=3.23.3
 
-# runtime variables
+# Stage to fetch scripts from the versioned entrypoints asset image
+FROM ghcr.io/coolcow/entrypoints:${ENTRYPOINTS_VERSION} AS entrypoints
+
+# Main build stage
+FROM alpine:${ALPINE_VERSION}
+
+# Runtime environment variables needed by the entrypoint scripts.
 ENV ENTRYPOINT_USER=duplicity \
       ENTRYPOINT_GROUP=duplicity \
-      ENTRYPOINT_HOME=/home
+      ENTRYPOINT_HOME=/home \
+      CROND_CRONTAB=/crontab
 
-# install duplicity
-
+# install dependencies for duplicity, cron, and script execution
 RUN apk --no-cache --update add \
-      duplicity
+      dcron \
+      duplicity \
+      shadow \
+      su-exec \
+    && touch $CROND_CRONTAB
+
+# Copy required scripts from the entrypoints asset image
+COPY --from=entrypoints /assets/create_user_group_home.sh /usr/local/bin/
+COPY --from=entrypoints /assets/entrypoint_su-exec.sh /usr/local/bin/
+COPY --from=entrypoints /assets/entrypoint_crond.sh /usr/local/bin/
+
+# Copy the smart entrypoint
+COPY entrypoint.sh /usr/local/bin/
+
+# Make scripts executable
+RUN chmod +x /usr/local/bin/*.sh
 
 WORKDIR $ENTRYPOINT_HOME
 
-ENTRYPOINT ["/entrypoint_su-exec.sh", "duplicity"]
+# The smart entrypoint decides whether to run duplicity directly or start crond.
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 
+# Default command if nothing is provided to `docker run`.
+# The smart entrypoint will pass this to duplicity.
 CMD ["--help"]
 
 #
@@ -23,7 +49,7 @@ ARG LABEL_BUILD_DATE
 ARG LABEL_VCS_REF
 ARG LABEL_LICENSE="GPL-3.0"
 ARG LABEL_IMAGE_NAME="ghcr.io/coolcow/duplicity"
-ARG LABEL_DESCRIPTION="Simple duplicity Docker image based on alpine."
+ARG LABEL_DESCRIPTION="Flexible duplicity Docker image supporting direct command and cron modes."
 ARG LABEL_URL="https://ghcr.io/coolcow/duplicity"
 ARG LABEL_VCS_URL="https://github.com/coolcow/docker-duplicity"
 ARG LABEL_MAINTAINER="Jean-Michel Ruiz (coolcow) <mail@coolcow.org>"
@@ -38,4 +64,6 @@ LABEL org.opencontainers.image.title=$LABEL_IMAGE_NAME \
       org.opencontainers.image.licenses=$LABEL_LICENSE \
       org.opencontainers.image.source=$LABEL_VCS_URL \
       org.opencontainers.image.url=$LABEL_URL
+
+VOLUME $ENTRYPOINT_HOME
 
