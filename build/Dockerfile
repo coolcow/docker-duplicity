@@ -1,5 +1,5 @@
 # Global build arguments
-ARG ENTRYPOINTS_VERSION=2.0.0
+ARG ENTRYPOINTS_VERSION=2.2.0
 ARG ALPINE_VERSION=3.23.3
 
 # Stage to fetch scripts from the versioned entrypoints asset image
@@ -9,9 +9,13 @@ FROM ghcr.io/coolcow/entrypoints:${ENTRYPOINTS_VERSION} AS entrypoints
 FROM alpine:${ALPINE_VERSION}
 
 # Runtime environment variables needed by the entrypoint scripts.
-ENV ENTRYPOINT_USER=duplicity \
-      ENTRYPOINT_GROUP=duplicity \
-      ENTRYPOINT_HOME=/home \
+ENV DUPLICITY_UID=1000 \
+      DUPLICITY_GID=1000 \
+      DUPLICITY_REMAP_IDS=1 \
+      DUPLICITY_USER=duplicity \
+      DUPLICITY_GROUP=duplicity \
+      DUPLICITY_HOME=/home/duplicity \
+      DUPLICITY_SHELL=/bin/sh \
       CROND_CRONTAB=/crontab
 
 # install dependencies for duplicity, cron, and script execution
@@ -23,7 +27,7 @@ RUN apk --no-cache --update add \
     && touch $CROND_CRONTAB
 
 # Copy required scripts from the entrypoints asset image
-COPY --from=entrypoints /assets/create_user_group_home.sh /usr/local/bin/
+COPY --from=entrypoints /assets/ensure_user_group_home.sh /usr/local/bin/
 COPY --from=entrypoints /assets/entrypoint_su-exec.sh /usr/local/bin/
 COPY --from=entrypoints /assets/entrypoint_crond.sh /usr/local/bin/
 
@@ -33,7 +37,7 @@ COPY entrypoint.sh /usr/local/bin/
 # Make scripts executable
 RUN chmod +x /usr/local/bin/*.sh
 
-WORKDIR $ENTRYPOINT_HOME
+WORKDIR $DUPLICITY_HOME
 
 # The smart entrypoint decides whether to run duplicity directly or start crond.
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
@@ -65,5 +69,5 @@ LABEL org.opencontainers.image.title=$LABEL_IMAGE_NAME \
       org.opencontainers.image.source=$LABEL_VCS_URL \
       org.opencontainers.image.url=$LABEL_URL
 
-VOLUME $ENTRYPOINT_HOME
+VOLUME $DUPLICITY_HOME
 

@@ -19,9 +19,10 @@ services:
     image: ghcr.io/coolcow/duplicity:latest
     command: /source file:///backup
     environment:
-      - PUID=1000
-      - PGID=1000
+      - DUPLICITY_UID=1000
+      - DUPLICITY_GID=1000
     volumes:
+      - /path/to/duplicity-home:/home/duplicity
       - /path/to/source:/source
       - /path/to/backup:/backup
 
@@ -31,11 +32,12 @@ services:
     restart: unless-stopped
     environment:
       - RUN_MODE=cron
-      - PUID=1000
-      - PGID=1000
+      - DUPLICITY_UID=1000
+      - DUPLICITY_GID=1000
       - TZ=Europe/Berlin
     volumes:
       - ./crontab:/crontab:ro
+      - /path/to/duplicity-home:/home/duplicity
       - /path/to/source:/source
       - /path/to/backup:/backup
       - /path/to/logs:/logs
@@ -53,13 +55,20 @@ services:
 
 ### Runtime Environment Variables
 
-| Variable        | Default   | Description                                                    |
-| --------------- | --------- | -------------------------------------------------------------- |
-| `RUN_MODE`      | `duplicity` | Set to `cron` to activate the cron scheduler mode.          |
-| `PUID`          | `1000`    | The user ID to run the `duplicity` process as.                |
-| `PGID`          | `1000`    | The group ID to run the `duplicity` process as.               |
-| `TZ`            | `Etc/UTC` | Timezone for the container, important for correct scheduling. |
-| `CROND_CRONTAB` | `/crontab`| Path inside the container for the crontab file.               |
+| Variable               | Default    | Target             | Description                                                     |
+| ---------------------- | ---------- | ------------------ | --------------------------------------------------------------- |
+| `DUPLICITY_UID`        | `1000`     | `TARGET_UID`       | The user ID to run `duplicity` as.                             |
+| `DUPLICITY_GID`        | `1000`     | `TARGET_GID`       | The group ID to run `duplicity` as.                            |
+| `DUPLICITY_REMAP_IDS`  | `1`        | `TARGET_REMAP_IDS` | Set `0` to disable remapping conflicting UID/GID entries.      |
+| `DUPLICITY_USER`       | `duplicity`| `TARGET_USER`      | The runtime user name inside the container.                    |
+| `DUPLICITY_GROUP`      | `duplicity`| `TARGET_GROUP`     | The runtime group name inside the container.                   |
+| `DUPLICITY_HOME`       | `/home/duplicity` | `TARGET_HOME`      | Home directory used by `duplicity` and as default workdir.     |
+| `DUPLICITY_SHELL`      | `/bin/sh`  | `TARGET_SHELL`     | Login shell for the runtime user.                              |
+| `RUN_MODE`             | `duplicity`| —                  | Set to `cron` to activate the cron scheduler mode.             |
+| `CROND_CRONTAB`        | `/crontab` | —                  | Path inside the container for the crontab file.                |
+| `TZ`                   | `Etc/UTC`  | —                  | Timezone for the container, important for correct scheduling.  |
+
+`Target` shows the corresponding variable used by `coolcow/entrypoints`; `—` means no mapping.
 
 ### Build-Time Arguments
 
@@ -68,7 +77,21 @@ Customize the image at build time with `docker build --build-arg <KEY>=<VALUE>`.
 | Argument              | Default   | Description                                      |
 | --------------------- | --------- | ------------------------------------------------ |
 | `ALPINE_VERSION`      | `3.23.3`  | Version of the Alpine base image.                |
-| `ENTRYPOINTS_VERSION` | `2.0.0`   | Version of the `coolcow/entrypoints` image.      |
+| `ENTRYPOINTS_VERSION` | `2.2.0`   | Version of the `coolcow/entrypoints` image.      |
+
+---
+
+## Migration Notes
+
+Runtime user/group environment variables were renamed to image-specific `DUPLICITY_*` names.
+
+- `PUID` → `DUPLICITY_UID`
+- `PGID` → `DUPLICITY_GID`
+- `ENTRYPOINT_USER` → `DUPLICITY_USER`
+- `ENTRYPOINT_GROUP` → `DUPLICITY_GROUP`
+- `ENTRYPOINT_HOME` → `DUPLICITY_HOME`
+
+Update your `docker run` / `docker-compose` environment configuration accordingly when upgrading from older tags.
 
 ---
 
